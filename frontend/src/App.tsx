@@ -1,12 +1,26 @@
 import { useState, useCallback } from 'react'
 import FileUpload from './components/FileUpload'
 import ResultPanel from './components/ResultPanel'
+import FilePreview from './components/FilePreview'
+
+interface PreviewResource {
+  type: string
+  name: string
+  label: string
+}
+
+interface PreviewData {
+  resources: PreviewResource[]
+  files: Record<string, string>
+  warnings: string[]
+}
+
+type TerraformFormat = 'flat' | 'modular'
 
 interface ConversionState {
   loading: boolean
   downloadUrl: string | null
   fileName: string | null
-  warnings: string[]
   error: string | null
   errorDetails: string | null
 }
@@ -15,35 +29,88 @@ const INITIAL_STATE: ConversionState = {
   loading: false,
   downloadUrl: null,
   fileName: null,
-  warnings: [],
   error: null,
   errorDetails: null,
 }
 
 export default function App() {
   const [state, setState] = useState<ConversionState>(INITIAL_STATE)
+  const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null)
+  const [previewData, setPreviewData] = useState<PreviewData | null>(null)
+  const [isDownloading, setIsDownloading] = useState(false)
+  const [terraformFormat, setTerraformFormat] = useState<TerraformFormat>('flat')
 
-  const handleFile = useCallback(async (file: File) => {
+  const handleFile = useCallback(async (file: File, requestedFormat?: TerraformFormat) => {
     // Revoke any previous blob URL to prevent memory leaks
     if (state.downloadUrl) {
       URL.revokeObjectURL(state.downloadUrl)
     }
 
+    setSelectedFile(file)
     setSelectedFileName(file.name)
     setState({ ...INITIAL_STATE, loading: true })
+    setPreviewData(null)
 
     const formData = new FormData()
     formData.append('file', file)
 
     try {
-      const res = await fetch('/api/convert', {
+      // First, get the preview
+      const formatToUse = requestedFormat ?? terraformFormat
+      const previewRes = await fetch(`/api/preview?format=${formatToUse}`, {
         method: 'POST',
         body: formData,
       })
 
-      if (!res.ok) {
+      if (!previewRes.ok) {
         let error = 'Conversion failed'
+        let errorDetails: string | null = null
+        try {
+          const json = await previewRes.json() as { error?: string; details?: string }
+          error = json.error ?? error
+          errorDetails = json.details ?? null
+        } catch {
+          errorDetails = `HTTP ${previewRes.status} ${previewRes.statusText}`
+        }
+        setState({ ...INITIAL_STATE, error, errorDetails })
+        return
+      }
+
+      const preview = (await previewRes.json()) as any
+      setPreviewData(preview)
+      setState({
+        loading: false,
+        downloadUrl: null,
+        fileName: null,
+        error: null,
+        errorDetails: null,
+      })
+    } catch (err) {
+      setState({
+        ...INITIAL_STATE,
+        error: 'Network error',
+        errorDetails: err instanceof Error ? err.message : 'Could not reach the conversion server.',
+      })
+    }
+  }, [state.downloadUrl, terraformFormat])
+
+  const handleDownload = useCallback(async () => {
+    if (!selectedFile) return
+
+    setIsDownloading(true)
+
+    try {
+      const uploadData = new FormData()
+      uploadData.append('file', selectedFile)
+
+      const res = await fetch(`/api/convert?format=${terraformFormat}`, {
+        method: 'POST',
+        body: uploadData,
+      })
+
+      if (!res.ok) {
+        let error = 'Download failed'
         let errorDetails: string | null = null
         try {
           const json = await res.json() as { error?: string; details?: string }
@@ -59,40 +126,50 @@ export default function App() {
       const blob = await res.blob()
       const downloadUrl = URL.createObjectURL(blob)
 
-      // Parse warnings from response header
-      const warningsHeader = res.headers.get('X-D2C-Warnings')
-      let warnings: string[] = []
-      if (warningsHeader) {
-        try {
-          warnings = JSON.parse(warningsHeader) as string[]
-        } catch {
-          // Ignore malformed header
-        }
-      }
-
-      const baseName = file.name.replace(/\.(drawio|xml)$/i, '')
+      const baseName = selectedFile.name.replace(/\.(drawio|xml)$/i, '')
+      const suffix = terraformFormat === 'modular' ? '-modular' : ''
       setState({
         loading: false,
         downloadUrl,
-        fileName: `${baseName}-terraform.zip`,
-        warnings,
+        fileName: `${baseName}-terraform${suffix}.zip`,
         error: null,
         errorDetails: null,
       })
+      setPreviewData(null)
     } catch (err) {
       setState({
         ...INITIAL_STATE,
-        error: 'Network error',
-        errorDetails: err instanceof Error ? err.message : 'Could not reach the conversion server.',
+        error: 'Download error',
+        errorDetails: err instanceof Error ? err.message : 'Failed to download file',
       })
+    } finally {
+      setIsDownloading(false)
     }
-  }, [state.downloadUrl])
+  }, [selectedFile, terraformFormat])
+
+  const handleBackFromPreview = () => {
+    setPreviewData(null)
+    setState(INITIAL_STATE)
+    setSelectedFile(null)
+    setSelectedFileName(null)
+  }
 
   const handleReset = () => {
     if (state.downloadUrl) URL.revokeObjectURL(state.downloadUrl)
     setState(INITIAL_STATE)
+    setSelectedFile(null)
     setSelectedFileName(null)
+    setPreviewData(null)
   }
+
+  const formatLabel = terraformFormat === 'modular' ? 'modular' : 'flat'
+
+  const handleFormatChange = useCallback((nextFormat: TerraformFormat) => {
+    setTerraformFormat(nextFormat)
+    if (selectedFile) {
+      void handleFile(selectedFile, nextFormat)
+    }
+  }, [selectedFile, handleFile])
 
   return (
     <div className="min-h-screen bg-gradient-to-br from-slate-100 to-brand-50 flex items-start justify-center py-16 px-4">
@@ -116,30 +193,75 @@ export default function App() {
 
         {/* Card */}
         <div className="bg-white rounded-2xl shadow-xl ring-1 ring-black/5 p-6 flex flex-col gap-5">
-          {/* Upload zone */}
-          <div>
-            <FileUpload onFile={handleFile} disabled={state.loading} />
-            {selectedFileName && !state.loading && (
-              <p className="mt-2 text-xs text-center text-gray-400">
-                Selected: <span className="font-medium text-gray-600">{selectedFileName}</span>
-              </p>
-            )}
-          </div>
+          {(!previewData && !state.downloadUrl) && (
+            <>
+              {/* Upload zone */}
+              <div>
+                <FileUpload onFile={handleFile} disabled={state.loading} />
+                {selectedFileName && !state.loading && (
+                  <p className="mt-2 text-xs text-center text-gray-400">
+                    Selected: <span className="font-medium text-gray-600">{selectedFileName}</span>
+                  </p>
+                )}
+              </div>
 
-          {/* Divider */}
-          {(state.loading || state.downloadUrl || state.error) && (
-            <hr className="border-gray-100" />
+              {/* Loading state */}
+              {state.loading && (
+                <div className="flex items-center justify-center py-8">
+                  <div className="text-center">
+                    <div className="w-12 h-12 border-4 border-brand-200 border-t-brand-600 rounded-full animate-spin mx-auto mb-3"></div>
+                    <p className="text-sm text-gray-600">Converting diagram...</p>
+                  </div>
+                </div>
+              )}
+            </>
           )}
 
-          {/* Result */}
-          <ResultPanel
-            downloadUrl={state.downloadUrl}
-            fileName={state.fileName}
-            warnings={state.warnings}
-            error={state.error}
-            errorDetails={state.errorDetails}
-            loading={state.loading}
-          />
+          {/* Preview View */}
+          {previewData && !state.downloadUrl && (
+            <>
+              <hr className="border-gray-100" />
+              <FilePreview
+                data={previewData}
+                onDownload={handleDownload}
+                onCancel={handleBackFromPreview}
+                onFormatChange={handleFormatChange}
+                format={terraformFormat}
+                downloadFileName={selectedFileName
+                  ? `${selectedFileName.replace(/\.(drawio|xml)$/i, '')}-terraform-${formatLabel}.zip`
+                  : `terraform-${formatLabel}.zip`}
+                loading={isDownloading}
+              />
+            </>
+          )}
+
+          {/* Result Panel */}
+          {state.downloadUrl && (
+            <>
+              <hr className="border-gray-100" />
+              <ResultPanel
+                downloadUrl={state.downloadUrl}
+                fileName={state.fileName}
+                error={state.error}
+                errorDetails={state.errorDetails}
+                loading={state.loading}
+              />
+            </>
+          )}
+
+          {/* Error state */}
+          {state.error && !state.downloadUrl && !previewData && (
+            <>
+              <hr className="border-gray-100" />
+              <ResultPanel
+                downloadUrl={null}
+                fileName={null}
+                error={state.error}
+                errorDetails={state.errorDetails}
+                loading={false}
+              />
+            </>
+          )}
 
           {/* Convert another */}
           {(state.downloadUrl || state.error) && (

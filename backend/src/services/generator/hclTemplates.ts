@@ -30,7 +30,7 @@ const BOOLEAN_VALUES = new Set(['true', 'false']);
  * Returns the value as a properly formatted HCL literal.
  * Expressions and booleans are unquoted; plain strings are quoted.
  */
-function formatHclValue(value: string): string {
+export function formatHclValue(value: string): string {
   const v = value.trim();
 
   // Boolean literals
@@ -157,33 +157,44 @@ export function buildMainTf(resources: MappedResource[]): string {
   ];
 
   for (const resource of resources) {
-    const { terraformType, resourceName, arguments: args, dependencies } = resource;
+    blocks.push(...buildResourceBlock(resource, idToAddress));
+    blocks.push('');
+  }
 
-    blocks.push(`resource "${terraformType}" "${resourceName}" {`);
+  return blocks.join('\n');
+}
 
-    // Emit arguments sorted alphabetically for deterministic output
-    const sortedArgs = Object.entries(args).sort(([a], [b]) => a.localeCompare(b));
-    for (const [key, val] of sortedArgs) {
-      blocks.push(`  ${key} = ${formatHclValue(val)}`);
-    }
+/**
+ * Builds a single Terraform resource block as HCL lines.
+ */
+export function buildResourceBlock(resource: MappedResource, idToAddress?: Map<string, string>): string[] {
+  const { terraformType, resourceName, arguments: args, dependencies } = resource;
+  const lines: string[] = [];
 
+  lines.push(`resource "${terraformType}" "${resourceName}" {`);
+
+  // Emit arguments sorted alphabetically for deterministic output
+  const sortedArgs = Object.entries(args).sort(([a], [b]) => a.localeCompare(b));
+  for (const [key, val] of sortedArgs) {
+    lines.push(`  ${key} = ${formatHclValue(val)}`);
+  }
+
+  if (idToAddress) {
     // depends_on when dependencies resolve to known resource addresses
     const depAddresses = dependencies
       .map(id => idToAddress.get(id))
       .filter((addr): addr is string => addr !== undefined);
 
     if (depAddresses.length > 0) {
-      blocks.push('');
-      blocks.push('  depends_on = [');
+      lines.push('');
+      lines.push('  depends_on = [');
       for (const addr of depAddresses) {
-        blocks.push(`    ${addr},`);
+        lines.push(`    ${addr},`);
       }
-      blocks.push('  ]');
+      lines.push('  ]');
     }
-
-    blocks.push('}');
-    blocks.push('');
   }
 
-  return blocks.join('\n');
+  lines.push('}');
+  return lines;
 }

@@ -1,4 +1,13 @@
 {
+  "mxgraph.aws4.group": {
+    "terraformType": "aws_vpc",
+    "requiredArgs": ["cidr_block"],
+    "defaults": {
+      "cidr_block": "10.0.0.0/16",
+      "enable_dns_hostnames": "true",
+      "enable_dns_support": "true"
+    }
+  },
   "mxgraph.aws4.s3": {
     "terraformType": "aws_s3_bucket",
     "requiredArgs": ["bucket"],
@@ -291,6 +300,290 @@
     "requiredArgs": ["name", "definition", "role_arn"],
     "defaults": {
       "type": "STANDARD"
+    }
+  },
+  "mxgraph.aws4.route_table": {
+    "terraformType": "aws_route_table",
+    "requiredArgs": ["vpc_id"],
+    "defaults": {}
+  },
+  "mxgraph.aws4.elastic_ip": {
+    "terraformType": "aws_eip",
+    "requiredArgs": ["domain"],
+    "defaults": {
+      "domain": "vpc"
+    }
+  },
+  "mxgraph.aws4.eip": {
+    "terraformType": "aws_eip",
+    "requiredArgs": ["domain"],
+    "defaults": {
+      "domain": "vpc"
+    }
+  },
+  "mxgraph.aws4.network_interface": {
+    "terraformType": "aws_network_interface",
+    "requiredArgs": ["subnet_id"],
+    "defaults": {}
+  },
+  "mxgraph.aws4.eni": {
+    "terraformType": "aws_network_interface",
+    "requiredArgs": ["subnet_id"],
+    "defaults": {}
+  },
+  "mxgraph.aws4.network_acl": {
+    "terraformType": "aws_network_acl",
+    "requiredArgs": ["vpc_id"],
+    "defaults": {}
+  },
+  "mxgraph.aws4.nacl": {
+    "terraformType": "aws_network_acl",
+    "requiredArgs": ["vpc_id"],
+    "defaults": {}
+  },
+  "mxgraph.aws4.vpn_gateway": {
+    "terraformType": "aws_vpn_gateway",
+    "requiredArgs": ["type"],
+    "defaults": {
+      "type": "ipsec.1"
+    }
+  },
+  "mxgraph.aws4.customer_gateway": {
+    "terraformType": "aws_customer_gateway",
+    "requiredArgs": ["bgp_asn", "ip_address", "type"],
+    "defaults": {
+      "type": "ipsec.1",
+      "ip_address": "var.customer_gateway_ip"
+    }
+  },
+  "mxgraph.aws4.target_group": {
+    "terraformType": "aws_lb_target_group",
+    "requiredArgs": ["name", "port", "protocol", "vpc_id"],
+    "defaults": {
+      "protocol": "HTTP",
+      "port": "80",
+      "health_check": "var.health_check"
+    }
+  },
+  "mxgraph.aws4.alb_target_group": {
+    "terraformType": "aws_lb_target_group",
+    "requiredArgs": ["name", "port", "protocol", "vpc_id"],
+    "defaults": {
+      "protocol": "HTTP",
+      "port": "80"
+    }
+  },
+  "mxgraph.aws4.listener": {
+    "terraformType": "aws_lb_listener",
+    "requiredArgs": ["load_balancer_arn", "port", "protocol"],
+    "defaults": {
+      "protocol": "HTTP",
+      "port": "80",
+      "default_action": "var.default_action"
+    }
+  },
+  "mxgraph.aws4.cloudwatch_alarm": {
+    "terraformType": "aws_cloudwatch_metric_alarm",
+    "requiredArgs": ["alarm_name", "comparison_operator", "evaluation_periods", "metric_name", "namespace", "period", "statistic", "threshold"],
+    "defaults": {
+      "comparison_operator": "GreaterThanThreshold",
+      "evaluation_periods": "1",
+      "period": "300",
+      "statistic": "Average"
+    }
+  },
+  "mxgraph.aws4.cloudwatch_alarm_state": {
+    "terraformType": "aws_cloudwatch_metric_alarm",
+    "requiredArgs": ["alarm_name", "comparison_operator", "evaluation_periods", "metric_name", "namespace", "period", "statistic", "threshold"],
+    "defaults": {
+      "comparison_operator": "GreaterThanThreshold",
+      "evaluation_periods": "1",
+      "period": "300",
+      "statistic": "Average"
+    }
+  },
+  "mxgraph.aws4.sns_subscription": {
+    "terraformType": "aws_sns_topic_subscription",
+    "requiredArgs": ["topic_arn", "protocol", "endpoint"],
+    "defaults": {
+      "protocol": "email",
+      "endpoint": "var.notification_email"
+    }
+  },
+  "mxgraph.aws4.autoscaling_group": {
+    "terraformType": "aws_autoscaling_group",
+    "requiredArgs": ["name", "launch_template", "max_size", "min_size", "vpc_zone_identifier"],
+    "defaults": {
+      "min_size": "1",
+      "max_size": "3",
+      "desired_capacity": "2"
+    }
+  },
+  "mxgraph.aws4.asg": {
+    "terraformType": "aws_autoscaling_group",
+    "requiredArgs": ["name", "launch_template", "max_size", "min_size", "vpc_zone_identifier"],
+    "defaults": {
+      "min_size": "1",
+      "max_size": "3"
+    }
+  },
+  "mxgraph.aws4.launch_template": {
+    "terraformType": "aws_launch_template",
+    "requiredArgs": ["name"],
+    "defaults": {
+      "image_id": "var.ami_id",
+      "instance_type": "t3.micro"
+    }
+  },
+  "mxgraph.aws4.launch_config": {
+    "terraformType": "aws_launch_template",
+    "requiredArgs": ["name"],
+    "defaults": {
+      "image_id": "var.ami_id",
+      "instance_type": "t3.micro"
+    }
+  },
+  "mxgraph.aws4.vpc_peering": {
+    "terraformType": "aws_vpc_peering_connection",
+    "requiredArgs": ["peer_vpc_id", "vpc_id"],
+    "defaults": {}
+  },
+  "mxgraph.aws4.vpc_peering_connection": {
+    "terraformType": "aws_vpc_peering_connection",
+    "requiredArgs": ["peer_vpc_id", "vpc_id"],
+    "defaults": {}
+  },
+  "mxgraph.aws4.iam_policy": {
+    "terraformType": "aws_iam_policy",
+    "requiredArgs": ["name", "policy"],
+    "defaults": {
+      "policy": "var.policy_document"
+    }
+  },
+  "mxgraph.aws4.iam_user": {
+    "terraformType": "aws_iam_user",
+    "requiredArgs": ["name"],
+    "defaults": {}
+  },
+  "mxgraph.aws4.user": {
+    "terraformType": "aws_iam_user",
+    "requiredArgs": ["name"],
+    "defaults": {}
+  },
+  "mxgraph.aws4.iam_group": {
+    "terraformType": "aws_iam_group",
+    "requiredArgs": ["name"],
+    "defaults": {}
+  },
+  "mxgraph.aws4.s3_bucket_policy": {
+    "terraformType": "aws_s3_bucket_policy",
+    "requiredArgs": ["bucket", "policy"],
+    "defaults": {
+      "policy": "var.bucket_policy"
+    }
+  },
+  "mxgraph.aws4.s3_bucket_versioning": {
+    "terraformType": "aws_s3_bucket_versioning",
+    "requiredArgs": ["bucket"],
+    "defaults": {
+      "versioning_configuration": "var.versioning_config"
+    }
+  },
+  "mxgraph.aws4.s3_bucket_encryption": {
+    "terraformType": "aws_s3_bucket_server_side_encryption_configuration",
+    "requiredArgs": ["bucket"],
+    "defaults": {
+      "rule": "var.encryption_rule"
+    }
+  },
+  "mxgraph.aws4.elasticsearch": {
+    "terraformType": "aws_opensearch_domain",
+    "requiredArgs": ["domain_name"],
+    "defaults": {
+      "engine_version": "OpenSearch_2.11",
+      "instance_type": "t3.small.opensearch"
+    }
+  },
+  "mxgraph.aws4.opensearch": {
+    "terraformType": "aws_opensearch_domain",
+    "requiredArgs": ["domain_name"],
+    "defaults": {
+      "engine_version": "OpenSearch_2.11",
+      "instance_type": "t3.small.opensearch"
+    }
+  },
+  "mxgraph.aws4.redshift": {
+    "terraformType": "aws_redshift_cluster",
+    "requiredArgs": ["cluster_identifier", "node_type", "number_of_nodes"],
+    "defaults": {
+      "node_type": "ra3.xlplus",
+      "number_of_nodes": "2"
+    }
+  },
+  "mxgraph.aws4.msk": {
+    "terraformType": "aws_msk_cluster",
+    "requiredArgs": ["cluster_name", "kafka_version", "broker_node_group_info"],
+    "defaults": {
+      "kafka_version": "3.6.0",
+      "number_of_broker_nodes": "3"
+    }
+  },
+  "mxgraph.aws4.kafka": {
+    "terraformType": "aws_msk_cluster",
+    "requiredArgs": ["cluster_name", "kafka_version", "broker_node_group_info"],
+    "defaults": {
+      "kafka_version": "3.6.0",
+      "number_of_broker_nodes": "3"
+    }
+  },
+  "mxgraph.aws4.quicksight": {
+    "terraformType": "aws_quicksight_account_subscription",
+    "requiredArgs": ["edition", "authentication_type"],
+    "defaults": {
+      "edition": "STANDARD",
+      "authentication_type": "IAM_IDENTITY_CENTER"
+    }
+  },
+  "mxgraph.aws4.sagemaker": {
+    "terraformType": "aws_sagemaker_notebook_instance",
+    "requiredArgs": ["instance_type", "notebook_instance_name", "role_arn"],
+    "defaults": {
+      "instance_type": "ml.t3.medium",
+      "role_arn": "aws_iam_role.sagemaker.arn"
+    }
+  },
+  "mxgraph.aws4.glue": {
+    "terraformType": "aws_glue_catalog_database",
+    "requiredArgs": ["name"],
+    "defaults": {}
+  },
+  "mxgraph.aws4.athena": {
+    "terraformType": "aws_athena_workgroup",
+    "requiredArgs": ["name"],
+    "defaults": {
+      "config": "var.athena_config"
+    }
+  },
+  "mxgraph.aws4.emr": {
+    "terraformType": "aws_emr_cluster",
+    "requiredArgs": ["job_flow_role", "name", "release_label", "service_role"],
+    "defaults": {
+      "release_label": "emr-7.0.0",
+      "applications": "var.applications"
+    }
+  },
+  "mxgraph.aws4.amp": {
+    "terraformType": "aws_prometheus_workspace",
+    "requiredArgs": ["alias"],
+    "defaults": {}
+  },
+  "mxgraph.aws4.grafana": {
+    "terraformType": "aws_grafana_workspace",
+    "requiredArgs": ["account_access_type", "authentication_providers", "permission_type"],
+    "defaults": {
+      "account_access_type": "CURRENT_ACCOUNT",
+      "permission_type": "SERVICE_MANAGED",
+      "authentication_providers": ["AWS_SSO"]
     }
   }
 }

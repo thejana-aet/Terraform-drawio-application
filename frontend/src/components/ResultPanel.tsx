@@ -1,7 +1,6 @@
 interface ResultPanelProps {
   downloadUrl: string | null
   fileName: string | null
-  warnings: string[]
   error: string | null
   errorDetails: string | null
   loading: boolean
@@ -10,7 +9,6 @@ interface ResultPanelProps {
 export default function ResultPanel({
   downloadUrl,
   fileName,
-  warnings,
   error,
   errorDetails,
   loading,
@@ -80,19 +78,6 @@ export default function ResultPanel({
         </a>
       </div>
 
-      {/* Warnings */}
-      {warnings.length > 0 && (
-        <div className="rounded-xl border border-amber-200 bg-amber-50 p-4 text-sm">
-          <p className="font-semibold text-amber-800 mb-2">
-            ⚠ {warnings.length} warning{warnings.length > 1 ? 's' : ''} during conversion
-          </p>
-          <ul className="list-disc list-inside space-y-1 text-amber-700">
-            {warnings.map((w, i) => (
-              <li key={i} className="break-words">{w}</li>
-            ))}
-          </ul>
-        </div>
-      )}
     </div>
   )
 }

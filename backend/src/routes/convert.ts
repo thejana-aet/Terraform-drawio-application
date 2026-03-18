@@ -26,7 +26,7 @@ import { extractDiagrams } from '../services/ingestion/decompressor';
 import { parseDrawioXml } from '../services/parser/xmlParser';
 import { resolveHierarchy, flattenTree } from '../services/parser/hierarchyResolver';
 import { mapResources } from '../services/mapper/resourceMapper';
-import { buildTerraformContents, buildZip } from '../services/generator/zipBuilder';
+import { buildTerraformContents, buildZip, TerraformLayout } from '../services/generator/zipBuilder';
 import { ApiErrorResponse } from '../types/index';
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -54,6 +54,88 @@ const upload = multer({
 // ─────────────────────────────────────────────────────────────────────────────
 
 export const convertRouter = Router();
+
+function readLayout(req: Request): TerraformLayout {
+  const raw = String(req.query.format ?? 'flat').toLowerCase();
+  return raw === 'modular' ? 'modular' : 'flat';
+}
+
+convertRouter.post(
+  '/preview',
+  upload.single('file'),
+  async (req: Request, res: Response, next: NextFunction): Promise<void> => {
+    try {
+      // ── 1. Validate upload ───────────────────────────────────────────────
+      if (!req.file) {
+        const body: ApiErrorResponse = { error: 'No file uploaded', details: 'Attach a .drawio file with the field name "file"' };
+        res.status(400).json(body);
+        return;
+      }
+
+      const fileContent = req.file.buffer.toString('utf-8');
+
+      // ── 2. Decompress ────────────────────────────────────────────────────
+      let diagrams: string[];
+      try {
+        diagrams = extractDiagrams(fileContent);
+      } catch (err) {
+        const body: ApiErrorResponse = { error: 'Failed to decompress diagram', details: (err as Error).message };
+        res.status(400).json(body);
+        return;
+      }
+
+      // ── 3–4. Parse + resolve hierarchy (all pages merged) ────────────────
+      const allWarnings: string[] = [];
+      const allNodes = [];
+      const allEdges = [];
+
+      for (const xml of diagrams) {
+        const { nodes, edges } = await parseDrawioXml(xml);
+        allNodes.push(...nodes);
+        allEdges.push(...edges);
+      }
+
+      const rootNodes = resolveHierarchy(allNodes, allEdges);
+
+      // ── 5. Flatten tree ──────────────────────────────────────────────────
+      const flat = flattenTree(rootNodes);
+
+      // ── 6. Map resources ─────────────────────────────────────────────────
+      const { resources, warnings } = mapResources(flat);
+      allWarnings.push(...warnings);
+
+      if (resources.length === 0) {
+        const body: ApiErrorResponse = {
+          error: 'No recognisable AWS resources found',
+          details:
+            'The diagram did not contain any supported AWS icons. ' +
+            (allWarnings.length > 0 ? `Warnings: ${allWarnings.join('; ')}` : ''),
+        };
+        res.status(422).json(body);
+        return;
+      }
+
+      // ── 7. Generate HCL ──────────────────────────────────────────────────
+      const layout = readLayout(req);
+      const contents = buildTerraformContents(resources, layout);
+
+      // ── 8. Return JSON response with resources, files, and warnings ───────
+      res.setHeader('Content-Type', 'application/json');
+      res.json({
+        success: true,
+        resources: resources.map(r => ({
+          type: r.terraformType,
+          name: r.resourceName,
+          label: r.node.label || 'Unnamed',
+        })),
+        files: contents,
+        warnings: allWarnings,
+      });
+    } catch (err) {
+      next(err);
+    }
+  }
+);
 
 convertRouter.post(
   '/convert',
@@ -111,7 +193,8 @@ convertRouter.post(
       }
 
       // ── 7–8. Generate HCL & ZIP ──────────────────────────────────────────
-      const contents = buildTerraformContents(resources);
+      const layout = readLayout(req);
+      const contents = buildTerraformContents(resources, layout);
       const zipBuffer = await buildZip(contents);
 
       // Attach warnings as a response header for visibility (non-blocking)
@@ -120,7 +203,8 @@ convertRouter.post(
       }
 
       res.setHeader('Content-Type', 'application/zip');
-      res.setHeader('Content-Disposition', 'attachment; filename="terraform.zip"');
+      const suffix = layout === 'modular' ? '-modular' : '';
+      res.setHeader('Content-Disposition', `attachment; filename="terraform${suffix}.zip"`);
       res.setHeader('Content-Length', zipBuffer.length);
       res.send(zipBuffer);
     } catch (err) {

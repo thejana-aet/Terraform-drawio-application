@@ -129,3 +129,16 @@ export interface ApiErrorResponse {
   error: string;
   details?: string;
 }
+
+export interface PreviewResource {
+  type: string;
+  name: string;
+  label: string;
+}
+
+export interface PreviewResponse {
+  success: true;
+  resources: PreviewResource[];
+  files: Record<string, string>;
+  warnings: string[];
+}

@@ -97,6 +97,44 @@ function resolveDependencies(node: ParsedNode, knownIds: Set<string>): string[] 
   return [...deps];
 }
 
+/**
+ * Detects the specific resource type for generic "group" shapes by analyzing   * the label, metadata, and naming patterns.
+ * 
+ * Examples:
+ *   "Private Subnet" → "aws_subnet"
+ *   "Web Security Group" → "aws_security_group"
+ *   "Development VPC" → "aws_vpc"
+ *   "AWS Cloud" → null (skip - just a container)
+ */
+function detectGroupResourceType(label: string, metadata: Record<string, string>): string | null {
+  const lowerLabel = label.toLowerCase();
+  const lowerMeta = JSON.stringify(metadata).toLowerCase();
+  const combined = `${lowerLabel} ${lowerMeta}`;
+
+  // Skip container elements that aren't actual resources
+  if (combined.includes('aws cloud') || combined.includes('region') || combined.includes('account')) {
+    return null;
+  }
+
+  // Detect security groups
+  if (combined.includes('security group') || combined.includes('sg')) {
+    return 'aws_security_group';
+  }
+
+  // Detect subnets
+  if (combined.includes('subnet')) {
+    return 'aws_subnet';
+  }
+
+  // Detect VPCs
+  if (combined.includes('vpc')) {
+    return 'aws_vpc';
+  }
+
+  // Default to VPC for other generic containers
+  return 'aws_vpc';
+}
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Public API
 // ─────────────────────────────────────────────────────────────────────────────
@@ -140,6 +178,17 @@ export function mapResources(nodes: ParsedNode[]): ConversionResult {
     const serviceLeaf = node.awsServiceKey.split('.').pop() ?? 'resource';
     const baseName = sanitiseName(labelName, serviceLeaf);
 
+    // For generic group shapes, intelligently detect the actual resource type
+    let terraformType = mapping.terraformType;
+    if (node.awsServiceKey === 'mxgraph.aws4.group') {
+      const detectedType = detectGroupResourceType(node.label, node.metadata);
+      if (!detectedType) {
+        // Skip container elements that aren't resources (AWS Cloud, Region, etc.)
+        continue;
+      }
+      terraformType = detectedType;
+    }
+
     // De-duplicate names within this conversion run
     const count = usedNames.get(baseName) ?? 0;
     usedNames.set(baseName, count + 1);
@@ -155,9 +204,23 @@ export function mapResources(nodes: ParsedNode[]): ConversionResult {
       ...normalisedMeta,
     };
 
+    // Ensure vpc_id / cidr_block for subnets, cidr_block for VPCs, etc.
+    if (terraformType === 'aws_subnet' && 'cidr_block' in args === false) {
+      args['cidr_block'] = 'var.subnet_cidr_block';
+    }
+    if (terraformType === 'aws_subnet' && 'vpc_id' in args === false) {
+      args['vpc_id'] = 'var.vpc_id';
+    }
+    if (terraformType === 'aws_vpc' && 'cidr_block' in args === false) {
+      args['cidr_block'] = '10.0.0.0/16';
+    }
+    if (terraformType === 'aws_security_group' && 'vpc_id' in args === false) {
+      args['vpc_id'] = 'var.vpc_id';
+    }
+
     // Ensure function_name / name / identifier / cluster_id gets the resource name
     // when the user hasn't explicitly provided it
-    if ('function_name' in args === false && mapping.terraformType === 'aws_lambda_function') {
+    if ('function_name' in args === false && terraformType === 'aws_lambda_function') {
       args['function_name'] = resourceName;
     }
     if ('name' in args === false && [
@@ -165,21 +228,21 @@ export function mapResources(nodes: ParsedNode[]): ConversionResult {
       'aws_api_gateway_rest_api', 'aws_apigatewayv2_api', 'aws_dynamodb_table',
       'aws_ecs_cluster', 'aws_eks_cluster', 'aws_lb', 'aws_security_group',
       'aws_cloudwatch_log_group', 'aws_kinesis_stream', 'aws_secretsmanager_secret',
-    ].includes(mapping.terraformType)) {
+    ].includes(terraformType)) {
       args['name'] = resourceName;
     }
-    if ('bucket' in args === false && mapping.terraformType === 'aws_s3_bucket') {
+    if ('bucket' in args === false && terraformType === 'aws_s3_bucket') {
       args['bucket'] = resourceName;
     }
-    if ('identifier' in args === false && mapping.terraformType === 'aws_db_instance') {
+    if ('identifier' in args === false && terraformType === 'aws_db_instance') {
       args['identifier'] = resourceName;
     }
-    if ('cluster_id' in args === false && mapping.terraformType === 'aws_elasticache_cluster') {
+    if ('cluster_id' in args === false && terraformType === 'aws_elasticache_cluster') {
       args['cluster_id'] = resourceName;
     }
 
     resources.push({
-      terraformType: mapping.terraformType,
+      terraformType,
       resourceName,
       arguments: args,
       dependencies: resolveDependencies(node, knownIds),
