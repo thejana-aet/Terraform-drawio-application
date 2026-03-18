@@ -1,0 +1,189 @@
+/**
+ * HCL Template Generator
+ *
+ * Builds the three Terraform source files from a list of MappedResources:
+ *
+ *   providers.tf  — required_providers block + provider "aws" config
+ *   variables.tf  — input variables (aws_region + any resource-specific vars)
+ *   main.tf       — one `resource` block per MappedResource, with a
+ *                   `depends_on` meta-argument when dependencies exist
+ *
+ * HCL value quoting rules applied here
+ * ─────────────────────────────────────
+ *  • Values that are already a Terraform expression (reference another resource,
+ *    start with "var.", "aws_", "data.", contain dots, or are "true"/"false")
+ *    are emitted without quotes.
+ *  • Pure integer strings are emitted without quotes.
+ *  • Everything else is wrapped in double-quotes.
+ */
+
+import { MappedResource } from '../../types/index';
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Value quoting
+// ─────────────────────────────────────────────────────────────────────────────
+
+const UNQUOTED_PREFIXES = ['var.', 'aws_', 'data.', 'module.', 'local.'];
+const BOOLEAN_VALUES = new Set(['true', 'false']);
+
+/**
+ * Returns the value as a properly formatted HCL literal.
+ * Expressions and booleans are unquoted; plain strings are quoted.
+ */
+function formatHclValue(value: string): string {
+  const v = value.trim();
+
+  // Boolean literals
+  if (BOOLEAN_VALUES.has(v)) return v;
+
+  // Integer literals
+  if (/^\d+$/.test(v)) return v;
+
+  // Terraform expressions (references, function calls)
+  if (UNQUOTED_PREFIXES.some(p => v.startsWith(p))) return v;
+
+  // CIDR blocks, ARN patterns, or values with resource-reference-like dots
+  // that should stay unquoted (e.g. "aws_iam_role.lambda_exec.arn")
+  if (/^[a-z_]+\.[a-z_]+\.[a-z_]+$/.test(v)) return v;
+
+  // Default: quoted string — escape backslashes and double-quotes
+  const escaped = v.replace(/\\/g, '\\\\').replace(/"/g, '\\"');
+  return `"${escaped}"`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// providers.tf
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Generates `providers.tf` content.
+ * Pins the AWS provider to a recent stable version constraint.
+ */
+export function buildProvidersTf(): string {
+  return `terraform {
+  required_version = ">= 1.6.0"
+
+  required_providers {
+    aws = {
+      source  = "hashicorp/aws"
+      version = "~> 5.0"
+    }
+  }
+}
+
+provider "aws" {
+  region = var.aws_region
+
+  default_tags {
+    tags = {
+      ManagedBy   = "Terraform"
+      GeneratedBy = "D2C-DrawioConverter"
+    }
+  }
+}
+`;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// variables.tf
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Generates `variables.tf` content.
+ * Always includes `aws_region`.  Scans all resource arguments for `var.*`
+ * references and emits a variable block for each unique one (excluding
+ * `aws_region` which is already declared).
+ */
+export function buildVariablesTf(resources: MappedResource[]): string {
+  const extraVars = new Set<string>();
+
+  for (const r of resources) {
+    for (const val of Object.values(r.arguments)) {
+      const v = val.trim();
+      if (v.startsWith('var.')) {
+        const varName = v.slice(4).split('.')[0]; // var.foo.bar → foo
+        if (varName && varName !== 'aws_region') {
+          extraVars.add(varName);
+        }
+      }
+    }
+  }
+
+  const lines: string[] = [];
+
+  lines.push(`variable "aws_region" {`);
+  lines.push(`  type        = string`);
+  lines.push(`  description = "AWS region to deploy resources into"`);
+  lines.push(`  default     = "us-east-1"`);
+  lines.push(`}`);
+
+  for (const varName of [...extraVars].sort()) {
+    lines.push('');
+    lines.push(`variable "${varName}" {`);
+    lines.push(`  type        = string`);
+    lines.push(`  description = "Value for ${varName}"`);
+    lines.push(`}`);
+  }
+
+  return lines.join('\n') + '\n';
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// main.tf
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Generates `main.tf` content with one resource block per MappedResource.
+ * A comment header is added at the top. Dependency relationships are
+ * rendered as `depends_on` meta-arguments referencing resource addresses.
+ */
+export function buildMainTf(resources: MappedResource[]): string {
+  if (resources.length === 0) {
+    return `# No recognisable AWS resources were found in the diagram.\n`;
+  }
+
+  // Build a lookup from node ID → "type.name" Terraform address
+  const idToAddress = new Map<string, string>();
+  for (const r of resources) {
+    idToAddress.set(r.node.id, `${r.terraformType}.${r.resourceName}`);
+  }
+
+  const blocks: string[] = [
+    `# ─────────────────────────────────────────────────────────────────────────`,
+    `# main.tf — Generated by D2C Draw.io → Terraform Converter`,
+    `# Review and complete all placeholder values before applying.`,
+    `# ─────────────────────────────────────────────────────────────────────────`,
+    '',
+  ];
+
+  for (const resource of resources) {
+    const { terraformType, resourceName, arguments: args, dependencies } = resource;
+
+    blocks.push(`resource "${terraformType}" "${resourceName}" {`);
+
+    // Emit arguments sorted alphabetically for deterministic output
+    const sortedArgs = Object.entries(args).sort(([a], [b]) => a.localeCompare(b));
+    for (const [key, val] of sortedArgs) {
+      blocks.push(`  ${key} = ${formatHclValue(val)}`);
+    }
+
+    // depends_on when dependencies resolve to known resource addresses
+    const depAddresses = dependencies
+      .map(id => idToAddress.get(id))
+      .filter((addr): addr is string => addr !== undefined);
+
+    if (depAddresses.length > 0) {
+      blocks.push('');
+      blocks.push('  depends_on = [');
+      for (const addr of depAddresses) {
+        blocks.push(`    ${addr},`);
+      }
+      blocks.push('  ]');
+    }
+
+    blocks.push('}');
+    blocks.push('');
+  }
+
+  return blocks.join('\n');
+}

@@ -1,0 +1,296 @@
+{
+  "mxgraph.aws4.s3": {
+    "terraformType": "aws_s3_bucket",
+    "requiredArgs": ["bucket"],
+    "defaults": {
+      "bucket": "var.bucket_name",
+      "force_destroy": "false"
+    }
+  },
+  "mxgraph.aws4.bucket": {
+    "terraformType": "aws_s3_bucket",
+    "requiredArgs": ["bucket"],
+    "defaults": {
+      "bucket": "var.bucket_name",
+      "force_destroy": "false"
+    }
+  },
+  "mxgraph.aws4.lambda": {
+    "terraformType": "aws_lambda_function",
+    "requiredArgs": ["function_name", "handler", "runtime", "role"],
+    "defaults": {
+      "handler": "index.handler",
+      "runtime": "nodejs20.x",
+      "role": "aws_iam_role.lambda_exec.arn",
+      "timeout": "30",
+      "memory_size": "128"
+    }
+  },
+  "mxgraph.aws4.lambda_function": {
+    "terraformType": "aws_lambda_function",
+    "requiredArgs": ["function_name", "handler", "runtime", "role"],
+    "defaults": {
+      "handler": "index.handler",
+      "runtime": "nodejs20.x",
+      "role": "aws_iam_role.lambda_exec.arn",
+      "timeout": "30",
+      "memory_size": "128"
+    }
+  },
+  "mxgraph.aws4.ec2": {
+    "terraformType": "aws_instance",
+    "requiredArgs": ["ami", "instance_type"],
+    "defaults": {
+      "ami": "var.ami_id",
+      "instance_type": "t3.micro"
+    }
+  },
+  "mxgraph.aws4.instance": {
+    "terraformType": "aws_instance",
+    "requiredArgs": ["ami", "instance_type"],
+    "defaults": {
+      "ami": "var.ami_id",
+      "instance_type": "t3.micro"
+    }
+  },
+  "mxgraph.aws4.vpc": {
+    "terraformType": "aws_vpc",
+    "requiredArgs": ["cidr_block"],
+    "defaults": {
+      "cidr_block": "10.0.0.0/16",
+      "enable_dns_hostnames": "true",
+      "enable_dns_support": "true"
+    }
+  },
+  "mxgraph.aws4.subnet": {
+    "terraformType": "aws_subnet",
+    "requiredArgs": ["vpc_id", "cidr_block"],
+    "defaults": {
+      "cidr_block": "10.0.1.0/24",
+      "map_public_ip_on_launch": "false"
+    }
+  },
+  "mxgraph.aws4.rds": {
+    "terraformType": "aws_db_instance",
+    "requiredArgs": ["identifier", "engine", "instance_class", "username", "password"],
+    "defaults": {
+      "engine": "mysql",
+      "engine_version": "8.0",
+      "instance_class": "db.t3.micro",
+      "allocated_storage": "20",
+      "skip_final_snapshot": "true"
+    }
+  },
+  "mxgraph.aws4.rds_instance": {
+    "terraformType": "aws_db_instance",
+    "requiredArgs": ["identifier", "engine", "instance_class", "username", "password"],
+    "defaults": {
+      "engine": "mysql",
+      "engine_version": "8.0",
+      "instance_class": "db.t3.micro",
+      "allocated_storage": "20",
+      "skip_final_snapshot": "true"
+    }
+  },
+  "mxgraph.aws4.sqs": {
+    "terraformType": "aws_sqs_queue",
+    "requiredArgs": ["name"],
+    "defaults": {
+      "delay_seconds": "0",
+      "max_message_size": "262144",
+      "message_retention_seconds": "345600",
+      "visibility_timeout_seconds": "30"
+    }
+  },
+  "mxgraph.aws4.sqs_queue": {
+    "terraformType": "aws_sqs_queue",
+    "requiredArgs": ["name"],
+    "defaults": {
+      "delay_seconds": "0",
+      "visibility_timeout_seconds": "30"
+    }
+  },
+  "mxgraph.aws4.sns": {
+    "terraformType": "aws_sns_topic",
+    "requiredArgs": ["name"],
+    "defaults": {}
+  },
+  "mxgraph.aws4.sns_topic": {
+    "terraformType": "aws_sns_topic",
+    "requiredArgs": ["name"],
+    "defaults": {}
+  },
+  "mxgraph.aws4.role": {
+    "terraformType": "aws_iam_role",
+    "requiredArgs": ["name", "assume_role_policy"],
+    "defaults": {
+      "assume_role_policy": "data.aws_iam_policy_document.assume_role.json"
+    }
+  },
+  "mxgraph.aws4.iam_role": {
+    "terraformType": "aws_iam_role",
+    "requiredArgs": ["name", "assume_role_policy"],
+    "defaults": {
+      "assume_role_policy": "data.aws_iam_policy_document.assume_role.json"
+    }
+  },
+  "mxgraph.aws4.api_gateway": {
+    "terraformType": "aws_api_gateway_rest_api",
+    "requiredArgs": ["name"],
+    "defaults": {
+      "description": "Managed by Terraform"
+    }
+  },
+  "mxgraph.aws4.api_gateway2": {
+    "terraformType": "aws_apigatewayv2_api",
+    "requiredArgs": ["name", "protocol_type"],
+    "defaults": {
+      "protocol_type": "HTTP"
+    }
+  },
+  "mxgraph.aws4.dynamo_db": {
+    "terraformType": "aws_dynamodb_table",
+    "requiredArgs": ["name", "hash_key", "billing_mode"],
+    "defaults": {
+      "billing_mode": "PAY_PER_REQUEST",
+      "hash_key": "id"
+    }
+  },
+  "mxgraph.aws4.dynamodb": {
+    "terraformType": "aws_dynamodb_table",
+    "requiredArgs": ["name", "hash_key", "billing_mode"],
+    "defaults": {
+      "billing_mode": "PAY_PER_REQUEST",
+      "hash_key": "id"
+    }
+  },
+  "mxgraph.aws4.ecs": {
+    "terraformType": "aws_ecs_cluster",
+    "requiredArgs": ["name"],
+    "defaults": {}
+  },
+  "mxgraph.aws4.ecs_service": {
+    "terraformType": "aws_ecs_service",
+    "requiredArgs": ["name", "cluster", "task_definition", "desired_count"],
+    "defaults": {
+      "desired_count": "1",
+      "launch_type": "FARGATE"
+    }
+  },
+  "mxgraph.aws4.eks": {
+    "terraformType": "aws_eks_cluster",
+    "requiredArgs": ["name", "role_arn"],
+    "defaults": {
+      "role_arn": "aws_iam_role.eks_cluster.arn"
+    }
+  },
+  "mxgraph.aws4.elasticache": {
+    "terraformType": "aws_elasticache_cluster",
+    "requiredArgs": ["cluster_id", "engine", "node_type", "num_cache_nodes"],
+    "defaults": {
+      "engine": "redis",
+      "node_type": "cache.t3.micro",
+      "num_cache_nodes": "1",
+      "parameter_group_name": "default.redis7"
+    }
+  },
+  "mxgraph.aws4.cloudfront": {
+    "terraformType": "aws_cloudfront_distribution",
+    "requiredArgs": ["enabled"],
+    "defaults": {
+      "enabled": "true",
+      "is_ipv6_enabled": "true",
+      "price_class": "PriceClass_All"
+    }
+  },
+  "mxgraph.aws4.route_53": {
+    "terraformType": "aws_route53_zone",
+    "requiredArgs": ["name"],
+    "defaults": {}
+  },
+  "mxgraph.aws4.route53": {
+    "terraformType": "aws_route53_zone",
+    "requiredArgs": ["name"],
+    "defaults": {}
+  },
+  "mxgraph.aws4.application_load_balancer": {
+    "terraformType": "aws_lb",
+    "requiredArgs": ["name", "load_balancer_type"],
+    "defaults": {
+      "load_balancer_type": "application",
+      "internal": "false",
+      "enable_deletion_protection": "false"
+    }
+  },
+  "mxgraph.aws4.elastic_load_balancing": {
+    "terraformType": "aws_lb",
+    "requiredArgs": ["name", "load_balancer_type"],
+    "defaults": {
+      "load_balancer_type": "application",
+      "internal": "false"
+    }
+  },
+  "mxgraph.aws4.network_load_balancer": {
+    "terraformType": "aws_lb",
+    "requiredArgs": ["name", "load_balancer_type"],
+    "defaults": {
+      "load_balancer_type": "network",
+      "internal": "false"
+    }
+  },
+  "mxgraph.aws4.security_group": {
+    "terraformType": "aws_security_group",
+    "requiredArgs": ["name"],
+    "defaults": {
+      "description": "Managed by Terraform"
+    }
+  },
+  "mxgraph.aws4.internet_gateway": {
+    "terraformType": "aws_internet_gateway",
+    "requiredArgs": ["vpc_id"],
+    "defaults": {}
+  },
+  "mxgraph.aws4.nat_gateway": {
+    "terraformType": "aws_nat_gateway",
+    "requiredArgs": ["allocation_id", "subnet_id"],
+    "defaults": {
+      "connectivity_type": "public"
+    }
+  },
+  "mxgraph.aws4.cloudwatch": {
+    "terraformType": "aws_cloudwatch_log_group",
+    "requiredArgs": ["name"],
+    "defaults": {
+      "retention_in_days": "30"
+    }
+  },
+  "mxgraph.aws4.kinesis": {
+    "terraformType": "aws_kinesis_stream",
+    "requiredArgs": ["name", "shard_count"],
+    "defaults": {
+      "shard_count": "1",
+      "retention_period": "24"
+    }
+  },
+  "mxgraph.aws4.secrets_manager": {
+    "terraformType": "aws_secretsmanager_secret",
+    "requiredArgs": ["name"],
+    "defaults": {
+      "recovery_window_in_days": "30"
+    }
+  },
+  "mxgraph.aws4.elastic_beanstalk": {
+    "terraformType": "aws_elastic_beanstalk_environment",
+    "requiredArgs": ["name", "application", "solution_stack_name"],
+    "defaults": {
+      "solution_stack_name": "64bit Amazon Linux 2 v3.5.0 running Node.js 18"
+    }
+  },
+  "mxgraph.aws4.step_functions": {
+    "terraformType": "aws_sfn_state_machine",
+    "requiredArgs": ["name", "definition", "role_arn"],
+    "defaults": {
+      "type": "STANDARD"
+    }
+  }
+}
