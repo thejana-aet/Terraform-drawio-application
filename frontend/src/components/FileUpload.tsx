@@ -3,9 +3,10 @@ import { useCallback, useState } from 'react'
 interface FileUploadProps {
   onFile: (file: File) => void
   disabled: boolean
+  loading?: boolean
 }
 
-export default function FileUpload({ onFile, disabled }: FileUploadProps) {
+export default function FileUpload({ onFile, disabled, loading = false }: FileUploadProps) {
   const [dragging, setDragging] = useState(false)
 
   const handleFile = useCallback(
@@ -73,10 +74,19 @@ export default function FileUpload({ onFile, disabled }: FileUploadProps) {
           d="M12 11v6m0 0-2-2m2 2 2-2"
         />
       </svg>
-      <p className="text-sm font-medium text-gray-600">
-        <span className="text-brand-600">Click to upload</span> or drag &amp; drop
-      </p>
-      <p className="mt-1 text-xs text-gray-400">.drawio files only — max 5 MB</p>
+      {loading ? (
+        <div className="flex flex-col items-center">
+          <div className="w-8 h-8 border-4 border-brand-200 border-t-brand-600 rounded-full animate-spin mb-2" />
+          <p className="text-sm font-medium text-brand-700">Reading and converting diagram...</p>
+        </div>
+      ) : (
+        <>
+          <p className="text-sm font-medium text-gray-600">
+            <span className="text-brand-600">Click to upload</span> or drag &amp; drop
+          </p>
+          <p className="mt-1 text-xs text-gray-400">.drawio files only — max 5 MB</p>
+        </>
+      )}
       <input
         id="drawio-input"
         type="file"

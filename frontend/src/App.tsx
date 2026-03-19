@@ -2,6 +2,7 @@ import { useState, useCallback } from 'react'
 import FileUpload from './components/FileUpload'
 import ResultPanel from './components/ResultPanel'
 import FilePreview from './components/FilePreview'
+import DrawioPreview from './components/DrawioPreview'
 
 interface PreviewResource {
   type: string
@@ -16,6 +17,14 @@ interface PreviewData {
 }
 
 type TerraformFormat = 'flat' | 'modular'
+
+interface UploadedDrawioPreview {
+  fileName: string
+  sizeBytes: number
+  pageNames: string[]
+  sourcePreview: string
+  isMxFile: boolean
+}
 
 interface ConversionState {
   loading: boolean
@@ -37,9 +46,29 @@ export default function App() {
   const [state, setState] = useState<ConversionState>(INITIAL_STATE)
   const [selectedFile, setSelectedFile] = useState<File | null>(null)
   const [selectedFileName, setSelectedFileName] = useState<string | null>(null)
+  const [uploadedPreview, setUploadedPreview] = useState<UploadedDrawioPreview | null>(null)
   const [previewData, setPreviewData] = useState<PreviewData | null>(null)
   const [isDownloading, setIsDownloading] = useState(false)
   const [terraformFormat, setTerraformFormat] = useState<TerraformFormat>('flat')
+
+  const extractPageNames = (xmlLike: string): string[] => {
+    const matches = [...xmlLike.matchAll(/<diagram\b[^>]*name="([^"]+)"[^>]*>/gi)]
+    const names = matches.map((m) => m[1]?.trim()).filter((name): name is string => Boolean(name))
+    return [...new Set(names)].slice(0, 20)
+  }
+
+  const buildUploadedPreview = async (file: File): Promise<UploadedDrawioPreview> => {
+    const text = await file.text()
+    const isMxFile = /<mxfile\b/i.test(text)
+    const pageNames = extractPageNames(text)
+    return {
+      fileName: file.name,
+      sizeBytes: file.size,
+      pageNames,
+      sourcePreview: text.slice(0, 9000),
+      isMxFile,
+    }
+  }
 
   const handleFile = useCallback(async (file: File, requestedFormat?: TerraformFormat) => {
     // Revoke any previous blob URL to prevent memory leaks
@@ -51,6 +80,19 @@ export default function App() {
     setSelectedFileName(file.name)
     setState({ ...INITIAL_STATE, loading: true })
     setPreviewData(null)
+
+    try {
+      const filePreview = await buildUploadedPreview(file)
+      setUploadedPreview(filePreview)
+    } catch {
+      setUploadedPreview({
+        fileName: file.name,
+        sizeBytes: file.size,
+        pageNames: [],
+        sourcePreview: 'Could not read file contents for preview.',
+        isMxFile: false,
+      })
+    }
 
     const formData = new FormData()
     formData.append('file', file)
@@ -152,6 +194,7 @@ export default function App() {
     setState(INITIAL_STATE)
     setSelectedFile(null)
     setSelectedFileName(null)
+    setUploadedPreview(null)
   }
 
   const handleReset = () => {
@@ -159,6 +202,7 @@ export default function App() {
     setState(INITIAL_STATE)
     setSelectedFile(null)
     setSelectedFileName(null)
+    setUploadedPreview(null)
     setPreviewData(null)
   }
 
@@ -197,13 +241,17 @@ export default function App() {
             <>
               {/* Upload zone */}
               <div>
-                <FileUpload onFile={handleFile} disabled={state.loading} />
+                <FileUpload onFile={handleFile} disabled={state.loading} loading={state.loading} />
                 {selectedFileName && !state.loading && (
                   <p className="mt-2 text-xs text-center text-gray-400">
                     Selected: <span className="font-medium text-gray-600">{selectedFileName}</span>
                   </p>
                 )}
               </div>
+
+              {uploadedPreview && (
+                <DrawioPreview data={uploadedPreview} />
+              )}
 
               {/* Loading state */}
               {state.loading && (

@@ -27,8 +27,11 @@
 import { parseStringPromise } from 'xml2js';
 import { RawNode, ParsedEdge } from '../../types/index';
 
-// Matches "shape=mxgraph.aws4.<service_name>" inside a style string
-const AWS_SERVICE_KEY_RE = /shape=(mxgraph\.aws4\.\w+)/i;
+// Matches AWS icon key values in style properties such as:
+//   shape=mxgraph.aws4.ec2
+//   shape=mxgraph.aws4.compute.ec2_instance
+//   resIcon=mxgraph.aws4.lambda
+const AWS_SERVICE_KEY_RE = /(?:^|;)(?:shape|resicon|icon)=(mxgraph\.aws4\.[^;]+)/i;
 
 interface MxCellAttributes {
   id?: string;
@@ -71,7 +74,12 @@ interface MxGraphModelXml {
  */
 function extractAwsServiceKey(style: string): string {
   const match = AWS_SERVICE_KEY_RE.exec(style);
-  return match ? match[1].toLowerCase() : '';
+  if (!match) return '';
+
+  // Normalise: lower-case and trim any trailing non key characters.
+  return match[1]
+    .toLowerCase()
+    .replace(/[^a-z0-9._]+$/g, '');
 }
 
 /**

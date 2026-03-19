@@ -38,6 +38,17 @@ import { extractResourceName } from '../metadata/metadataExtractor';
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const awsMappings = require('./awsMappings.json') as AwsMappingTable;
 
+const KEY_ALIASES: Record<string, string> = {
+  'mxgraph.aws4.ec2_instance': 'mxgraph.aws4.ec2',
+  'mxgraph.aws4.compute.ec2': 'mxgraph.aws4.ec2',
+  'mxgraph.aws4.compute.ec2_instance': 'mxgraph.aws4.ec2',
+  'mxgraph.aws4.instance_ec2': 'mxgraph.aws4.ec2',
+  'mxgraph.aws4.igw': 'mxgraph.aws4.internet_gateway',
+  'mxgraph.aws4.internetgateway': 'mxgraph.aws4.internet_gateway',
+  'mxgraph.aws4.natgateway': 'mxgraph.aws4.nat_gateway',
+  'mxgraph.aws4.securitygroup': 'mxgraph.aws4.security_group',
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Helpers
 // ─────────────────────────────────────────────────────────────────────────────
@@ -95,6 +106,47 @@ function resolveDependencies(node: ParsedNode, knownIds: Set<string>): string[] 
   }
 
   return [...deps];
+}
+
+function mappingLeaf(key: string): string {
+  return key.split('.').pop() ?? key;
+}
+
+function resolveMappingKey(awsServiceKey: string, label: string): string | null {
+  const key = awsServiceKey.toLowerCase();
+
+  if (awsMappings[key]) return key;
+  if (KEY_ALIASES[key] && awsMappings[KEY_ALIASES[key]]) return KEY_ALIASES[key];
+
+  // Try stripping extra segments from right to left:
+  // mxgraph.aws4.compute.ec2_instance -> mxgraph.aws4.compute -> mxgraph.aws4
+  const parts = key.split('.');
+  for (let i = parts.length - 1; i > 2; i--) {
+    const candidate = parts.slice(0, i).join('.');
+    if (awsMappings[candidate]) return candidate;
+  }
+
+  // Try leaf-based fuzzy match: ec2_instance -> ec2 / instance
+  const leaf = mappingLeaf(key);
+  const leafTokens = leaf.split(/[_-]+/g).filter(Boolean);
+  const allMappingKeys = Object.keys(awsMappings);
+
+  for (const candidate of allMappingKeys) {
+    const candidateLeaf = mappingLeaf(candidate);
+    if (candidateLeaf === leaf) return candidate;
+    if (leafTokens.some(t => t.length > 2 && candidateLeaf.includes(t))) return candidate;
+  }
+
+  // Last fallback: use resource label hints for common AWS resources.
+  const lowerLabel = label.toLowerCase();
+  if (lowerLabel.includes('ec2')) return 'mxgraph.aws4.ec2';
+  if (lowerLabel.includes('internet gateway') || lowerLabel.includes('igw')) return 'mxgraph.aws4.internet_gateway';
+  if (lowerLabel.includes('nat gateway')) return 'mxgraph.aws4.nat_gateway';
+  if (lowerLabel.includes('security group')) return 'mxgraph.aws4.security_group';
+  if (lowerLabel.includes('subnet')) return 'mxgraph.aws4.subnet';
+  if (lowerLabel.includes('vpc')) return 'mxgraph.aws4.vpc';
+
+  return null;
 }
 
 /**
@@ -164,23 +216,24 @@ export function mapResources(nodes: ParsedNode[]): ConversionResult {
       continue;
     }
 
-    const mapping = awsMappings[node.awsServiceKey];
-    if (!mapping) {
+    const resolvedKey = resolveMappingKey(node.awsServiceKey, node.label || '');
+    if (!resolvedKey) {
       warnings.push(
         `No Terraform mapping found for AWS icon key "${node.awsServiceKey}" ` +
         `(node: "${node.label || node.id}"). Skipping.`
       );
       continue;
     }
+    const mapping = awsMappings[resolvedKey];
 
     // Build resource name
     const labelName = extractResourceName(node.label);
-    const serviceLeaf = node.awsServiceKey.split('.').pop() ?? 'resource';
+    const serviceLeaf = resolvedKey.split('.').pop() ?? 'resource';
     const baseName = sanitiseName(labelName, serviceLeaf);
 
     // For generic group shapes, intelligently detect the actual resource type
     let terraformType = mapping.terraformType;
-    if (node.awsServiceKey === 'mxgraph.aws4.group') {
+    if (resolvedKey === 'mxgraph.aws4.group') {
       const detectedType = detectGroupResourceType(node.label, node.metadata);
       if (!detectedType) {
         // Skip container elements that aren't resources (AWS Cloud, Region, etc.)

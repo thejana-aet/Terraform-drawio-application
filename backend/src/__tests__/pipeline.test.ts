@@ -195,6 +195,20 @@ describe('parseDrawioXml', () => {
     expect(keys).toEqual(['mxgraph.aws4.lambda', 'mxgraph.aws4.s3']);
   });
 
+  it('extracts awsServiceKey from resIcon and multi-segment shape values', async () => {
+    const xml = `
+      <mxGraphModel><root>
+        <mxCell id="0"/><mxCell id="1" parent="0"/>
+        <mxCell id="2" value="My EC2" style="shape=mxgraph.aws4.compute.ec2_instance;" vertex="1" parent="1"/>
+        <mxCell id="3" value="My Lambda" style="resIcon=mxgraph.aws4.lambda;" vertex="1" parent="1"/>
+      </root></mxGraphModel>`;
+    const { nodes } = await parseDrawioXml(xml);
+    expect(nodes.map(n => n.awsServiceKey).sort()).toEqual([
+      'mxgraph.aws4.compute.ec2_instance',
+      'mxgraph.aws4.lambda',
+    ]);
+  });
+
   it('skips sentinel cells id=0 and id=1', async () => {
     const { nodes } = await parseDrawioXml(MINIMAL_XML);
     expect(nodes.find(n => n.id === '0')).toBeUndefined();
@@ -243,6 +257,18 @@ describe('mapResources', () => {
     const { warnings } = mapResources([pNode]);
     expect(warnings).toHaveLength(1);
     expect(warnings[0]).toContain('mxgraph.aws4.unknownservice');
+  });
+
+  it('maps ec2 instance icon variants to aws_instance', async () => {
+    const pNode = {
+      id: 'ec2-1', label: 'EC2 Instance', style: 'shape=mxgraph.aws4.compute.ec2_instance;',
+      awsServiceKey: 'mxgraph.aws4.compute.ec2_instance', parentId: null,
+      children: [], edges: [], metadata: {}, isContainer: false,
+    };
+    const { resources, warnings } = mapResources([pNode]);
+    expect(warnings).toHaveLength(0);
+    expect(resources).toHaveLength(1);
+    expect(resources[0].terraformType).toBe('aws_instance');
   });
 });
 
