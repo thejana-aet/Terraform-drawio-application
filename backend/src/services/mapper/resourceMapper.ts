@@ -220,6 +220,51 @@ function resolveMappingKey(awsServiceKey: string, label: string): string | null 
 }
 
 /**
+ * Resolves conflicts between an icon-derived key and an explicit label hint.
+ *
+ * Some Draw.io diagrams use generic/group visuals or mis-typed AWS icons while
+ * the label is explicit (e.g. "Private Subnet"). In those cases, prefer the
+ * canonical AWS key that matches the label so generated Terraform matches docs.
+ */
+function resolveLabelConflictKey(resolvedKey: string, label: string): string {
+  const lower = label.toLowerCase();
+  if (!lower.trim()) return resolvedKey;
+
+  const saysSubnet = lower.includes('subnet');
+  const saysSecurityGroup = lower.includes('security group') || /\bsg\b/.test(lower);
+  const saysVpc = /\bvpc\b/.test(lower) && !lower.includes('vpc peering');
+
+  // Label explicitly says subnet: prefer subnet over generic/group/sg misreads.
+  if (
+    saysSubnet &&
+    resolvedKey !== 'mxgraph.aws4.subnet' &&
+    ['mxgraph.aws4.group', 'mxgraph.aws4.security_group', 'mxgraph.aws4.vpc'].includes(resolvedKey)
+  ) {
+    return 'mxgraph.aws4.subnet';
+  }
+
+  // Label explicitly says security group: prefer SG over generic/group.
+  if (
+    saysSecurityGroup &&
+    resolvedKey !== 'mxgraph.aws4.security_group' &&
+    ['mxgraph.aws4.group', 'mxgraph.aws4.vpc'].includes(resolvedKey)
+  ) {
+    return 'mxgraph.aws4.security_group';
+  }
+
+  // Label explicitly says VPC: prefer VPC over generic/group.
+  if (
+    saysVpc &&
+    resolvedKey !== 'mxgraph.aws4.vpc' &&
+    resolvedKey === 'mxgraph.aws4.group'
+  ) {
+    return 'mxgraph.aws4.vpc';
+  }
+
+  return resolvedKey;
+}
+
+/**
  * Detects the specific resource type for generic "group" shapes by analyzing   * the label, metadata, and naming patterns.
  * 
  * Examples:
@@ -324,16 +369,17 @@ export function mapResources(nodes: ParsedNode[]): ConversionResult {
       );
       continue;
     }
-    const mapping = awsMappings[resolvedKey];
+    const canonicalKey = resolveLabelConflictKey(resolvedKey, node.label || '');
+    const mapping = awsMappings[canonicalKey];
 
     // Build resource name
     const labelName = extractResourceName(node.label);
-    const serviceLeaf = resolvedKey.split('.').pop() ?? 'resource';
+    const serviceLeaf = canonicalKey.split('.').pop() ?? 'resource';
     const baseName = sanitiseName(labelName, serviceLeaf);
 
     // For generic group shapes, intelligently detect the actual resource type
     let terraformType = mapping.terraformType;
-    if (resolvedKey === 'mxgraph.aws4.group') {
+    if (canonicalKey === 'mxgraph.aws4.group') {
       const detectedType = detectGroupResourceType(node.label, node.metadata);
       if (!detectedType) {
         // Skip container elements that aren't resources (AWS Cloud, Region, etc.)
@@ -455,7 +501,7 @@ export function mapResources(nodes: ParsedNode[]): ConversionResult {
     }
 
     // ── vpc_id (security group): SG inside a VPC (possibly via subnet) ───
-    if (terraformType === 'aws_security_group' && !('vpc_id' in args) || args['vpc_id']?.startsWith('var.')) {
+    if (terraformType === 'aws_security_group' && (!('vpc_id' in args) || args['vpc_id']?.startsWith('var.'))) {
       const vpcRes =
         findAncestor(node.parentId, 'aws_vpc') ??
         // also check grandparent (SG drawn inside a subnet that's inside VPC)
