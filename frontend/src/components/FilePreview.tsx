@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 
 interface Resource {
   type: string
@@ -33,9 +33,10 @@ export default function FilePreview({
   downloadFileName,
   loading = false,
 }: FilePreviewProps) {
-  const fileNames = Object.keys(data.files).sort((a, b) => a.localeCompare(b))
+  const fileNames = useMemo(() => Object.keys(data.files).sort((a, b) => a.localeCompare(b)), [data.files])
   const [activeTab, setActiveTab] = useState<string>('resources')
   const [copiedFile, setCopiedFile] = useState<string | null>(null)
+  const [collapsedFolders, setCollapsedFolders] = useState<Record<string, boolean>>({})
 
   useEffect(() => {
     if (activeTab !== 'resources' && !(activeTab in data.files)) {
@@ -50,14 +51,67 @@ export default function FilePreview({
     })
   }
 
-  const tabs: Array<{ id: string; label: string; count?: number; icon?: string }> = [
-    { id: 'resources', label: 'Resources', count: data.resources.length },
-    ...fileNames.map(fileName => ({
-      id: fileName,
-      label: fileName,
-      icon: fileName.startsWith('modules/') ? '🧩' : '📄',
-    })),
-  ]
+  type ExplorerNode = {
+    name: string
+    path: string
+    type: 'folder' | 'file'
+    children: ExplorerNode[]
+  }
+
+  const explorerTree = useMemo<ExplorerNode[]>(() => {
+    const rootMap = new Map<string, ExplorerNode>()
+
+    const ensureChild = (children: ExplorerNode[], name: string, path: string, type: 'folder' | 'file') => {
+      let child = children.find((n) => n.name === name && n.type === type)
+      if (!child) {
+        child = { name, path, type, children: [] }
+        children.push(child)
+      }
+      return child
+    }
+
+    for (const filePath of fileNames) {
+      const parts = filePath.split('/').filter(Boolean)
+      if (parts.length === 0) continue
+
+      const head = parts[0]
+      if (!rootMap.has(head)) {
+        rootMap.set(head, { name: head, path: head, type: parts.length === 1 ? 'file' : 'folder', children: [] })
+      }
+
+      let current = rootMap.get(head)!
+      let currentPath = head
+
+      for (let i = 1; i < parts.length; i++) {
+        const part = parts[i]
+        currentPath = `${currentPath}/${part}`
+        const isLeaf = i === parts.length - 1
+        current = ensureChild(current.children, part, currentPath, isLeaf ? 'file' : 'folder')
+      }
+    }
+
+    const sortNodes = (nodes: ExplorerNode[]): ExplorerNode[] => {
+      nodes.sort((a, b) => {
+        if (a.type !== b.type) return a.type === 'folder' ? -1 : 1
+        return a.name.localeCompare(b.name)
+      })
+      for (const n of nodes) {
+        if (n.children.length > 0) sortNodes(n.children)
+      }
+      return nodes
+    }
+
+    return sortNodes(Array.from(rootMap.values()))
+  }, [fileNames])
+
+  const toggleFolder = (path: string) => {
+    setCollapsedFolders((prev) => ({
+      ...prev,
+      [path]: !prev[path],
+    }))
+  }
+
+  const activeContent = activeTab === 'resources' ? '' : (data.files[activeTab] ?? '')
 
   return (
     <div className="space-y-4">
@@ -97,86 +151,70 @@ export default function FilePreview({
         </div>
       </div>
 
-      {/* Tab Navigation */}
-      <div className="flex gap-1 bg-gray-100 rounded-lg p-1 overflow-x-auto">
-        {tabs.map(tab => (
-          <button
-            key={tab.id}
-            onClick={() => setActiveTab(tab.id)}
-            className={`px-3 py-2 rounded text-sm font-medium whitespace-nowrap transition-colors ${
-              activeTab === tab.id
-                ? 'bg-white text-brand-600 shadow'
-                : 'text-gray-600 hover:text-gray-900'
-            }`}
-          >
-            {tab.icon && <span className="mr-1">{tab.icon}</span>}
-            {tab.label}
-            {tab.count !== undefined && (
-              <span className="ml-1 text-xs bg-gray-200 px-2 py-0.5 rounded-full">
-                {tab.count}
-              </span>
-            )}
-          </button>
-        ))}
-      </div>
+      {/* VS Code-like split layout */}
+      <div className="bg-white rounded-lg border-2 border-gray-800 overflow-hidden h-[22rem] md:h-[26rem] shadow-md">
+        <div className="grid grid-cols-1 md:grid-cols-[18rem_minmax(0,1fr)] h-full min-h-0">
+          {/* LEFT: Explorer pane */}
+          <div className="flex flex-col min-w-0 min-h-0 border-b md:border-b-0 md:border-r border-gray-800 bg-gray-50">
+            <div className="px-4 py-2 border-b border-gray-800 bg-white text-xs font-semibold tracking-wide uppercase text-gray-600">
+              Explorer
+            </div>
 
-      {/* Content */}
-      <div className="bg-gray-50 rounded-lg border border-gray-200 overflow-hidden">
-        {activeTab === 'resources' && (
-          <div className="divide-y max-h-96 overflow-y-auto">
-            {data.resources.length === 0 ? (
-              <div className="p-6 text-center text-gray-500">
-                No resources found
+            <div className="flex-1 min-h-0 overflow-y-auto overflow-x-hidden p-2 text-sm text-gray-700">
+              <button
+                onClick={() => setActiveTab('resources')}
+                className={`w-full text-left px-2 py-1 rounded flex items-center gap-2 ${
+                  activeTab === 'resources' ? 'bg-brand-100 text-brand-700 font-medium' : 'hover:bg-gray-100'
+                }`}
+              >
+                <span>☰</span>
+                <span>Resources ({data.resources.length})</span>
+              </button>
+
+              <div className="mt-2 space-y-0.5">
+                {renderNodes(explorerTree, 0)}
               </div>
-            ) : (
-              data.resources.map((resource, i) => (
-                <div key={i} className="p-4 hover:bg-gray-100 transition-colors">
-                  <div className="flex items-start justify-between gap-4">
-                    <div className="flex-1 min-w-0">
+            </div>
+          </div>
+
+          {/* RIGHT: Preview pane */}
+          <div className="flex flex-col min-w-0 min-h-0 border-b md:border-b-0 md:border-l border-gray-800">
+            <div className="flex items-center justify-between px-4 py-2 border-b border-gray-800 bg-white">
+              <div className="text-xs font-medium tracking-wide uppercase text-gray-600">
+                {activeTab === 'resources' ? 'Resources' : activeTab}
+              </div>
+              {activeTab !== 'resources' && (
+                <button
+                  onClick={() => copyToClipboard(activeContent, activeTab)}
+                  className="text-xs px-2 py-1 rounded bg-gray-100 border border-gray-600 text-gray-700 hover:bg-gray-200 transition-colors"
+                >
+                  {copiedFile === activeTab ? 'Copied' : 'Copy'}
+                </button>
+              )}
+            </div>
+
+            {activeTab === 'resources' ? (
+              <div className="divide-y divide-gray-800 overflow-auto">
+                {data.resources.length === 0 ? (
+                  <div className="p-6 text-center text-gray-400">No resources found</div>
+                ) : (
+                  data.resources.map((resource, i) => (
+                    <div key={i} className="p-4 hover:bg-gray-50 transition-colors">
                       <p className="font-mono text-sm font-medium text-gray-900 break-all">
                         {resource.type}.{resource.name}
                       </p>
-                      <p className="text-xs text-gray-600 mt-1">
-                        {resource.label}
-                      </p>
+                      <p className="text-xs text-gray-600 mt-1">{resource.label}</p>
                     </div>
-                    <span className="text-xs bg-brand-100 text-brand-700 px-2 py-1 rounded whitespace-nowrap">
-                      {resource.type.split('_').pop()}
-                    </span>
-                  </div>
-                </div>
-              ))
+                  ))
+                )}
+              </div>
+            ) : (
+              <pre className="flex-1 overflow-auto p-4 text-xs text-gray-800 font-mono leading-relaxed bg-gray-50">
+                <code>{activeContent}</code>
+              </pre>
             )}
           </div>
-        )}
-
-        {activeTab !== 'resources' && (
-          <div className="flex flex-col h-96">
-            {/* File header with copy button */}
-            <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 bg-gray-100">
-              <code className="text-sm font-medium text-gray-700">
-                {activeTab}
-              </code>
-              <button
-                onClick={() =>
-                  copyToClipboard(
-                    data.files[activeTab] ?? '',
-                    activeTab
-                  )
-                }
-                className="text-xs px-3 py-1 rounded bg-white border border-gray-300 hover:bg-gray-50 transition-colors"
-              >
-                {copiedFile === activeTab ? '✓ Copied' : 'Copy'}
-              </button>
-            </div>
-            {/* File content */}
-            <pre className="flex-1 overflow-auto p-4 text-xs text-gray-700 font-mono leading-relaxed">
-              <code>
-                {data.files[activeTab] ?? ''}
-              </code>
-            </pre>
-          </div>
-        )}
+        </div>
       </div>
 
       {/* Action Buttons */}
@@ -217,4 +255,49 @@ export default function FilePreview({
       </div>
     </div>
   )
+
+  function renderNodes(nodes: ExplorerNode[], depth: number): JSX.Element[] {
+    const items: JSX.Element[] = []
+
+    for (const node of nodes) {
+      const pad = { paddingLeft: `${depth * 12 + 8}px` }
+      if (node.type === 'folder') {
+        const isCollapsed = collapsedFolders[node.path] ?? false
+        items.push(
+          <button
+            key={`folder-${node.path}`}
+            onClick={() => toggleFolder(node.path)}
+            style={pad}
+            className="w-full text-left py-1 pr-2 rounded hover:bg-gray-100 flex items-center gap-1"
+          >
+            <span className="text-xs w-3">{isCollapsed ? '▸' : '▾'}</span>
+            <span>📁</span>
+            <span className="truncate">{node.name}</span>
+          </button>
+        )
+
+        if (!isCollapsed) {
+          items.push(...renderNodes(node.children, depth + 1))
+        }
+      } else {
+        const isActive = activeTab === node.path
+        items.push(
+          <button
+            key={`file-${node.path}`}
+            onClick={() => setActiveTab(node.path)}
+            style={pad}
+            className={`w-full text-left py-1 pr-2 rounded flex items-center gap-1 ${
+              isActive ? 'bg-brand-100 text-brand-700 font-medium' : 'hover:bg-gray-100'
+            }`}
+          >
+            <span className="w-3" />
+            <span>📄</span>
+            <span className="truncate">{node.name}</span>
+          </button>
+        )
+      }
+    }
+
+    return items
+  }
 }

@@ -216,8 +216,8 @@ export default function App() {
   }, [selectedFile, handleFile])
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-slate-100 to-brand-50 flex items-start justify-center py-16 px-4">
-      <div className="w-full max-w-xl">
+    <div className="min-h-screen bg-gradient-to-br from-slate-100 to-brand-50 flex items-start justify-center py-10 px-4">
+      <div className={`w-full ${previewData ? 'max-w-7xl' : 'max-w-xl'}`}>
         {/* Header */}
         <div className="mb-8 text-center">
           <div className="inline-flex items-center justify-center w-16 h-16 rounded-2xl bg-brand-600 shadow-lg mb-4">
