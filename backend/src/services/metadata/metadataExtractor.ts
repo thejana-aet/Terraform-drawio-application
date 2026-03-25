@@ -32,7 +32,7 @@
  */
 
 /** Strips HTML tags and decodes common HTML entities */
-function stripHtml(raw: string): string {
+export function stripHtml(raw: string): string {
   return raw
     .replace(/<br\s*\/?>/gi, '\n')    // <br> and <br/> → newline
     .replace(/<[^>]+>/g, '')           // remove all other tags

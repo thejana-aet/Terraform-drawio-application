@@ -209,6 +209,21 @@ describe('parseDrawioXml', () => {
     ]);
   });
 
+  it('extracts awsServiceKey when style is defined on UserObject', async () => {
+    const xml = `
+      <mxGraphModel><root>
+        <mxCell id="0"/><mxCell id="1" parent="0"/>
+        <UserObject id="ec2-uo" label="Web EC2" style="shape=mxgraph.aws4.ec2;">
+          <mxCell id="inner-1" vertex="1" parent="1"/>
+        </UserObject>
+      </root></mxGraphModel>`;
+    const { nodes } = await parseDrawioXml(xml);
+    expect(nodes).toHaveLength(1);
+    expect(nodes[0].awsServiceKey).toBe('mxgraph.aws4.ec2');
+    expect(nodes[0].label).toBe('Web EC2');
+    expect(nodes[0].id).toBe('ec2-uo');
+  });
+
   it('skips sentinel cells id=0 and id=1', async () => {
     const { nodes } = await parseDrawioXml(MINIMAL_XML);
     expect(nodes.find(n => n.id === '0')).toBeUndefined();
@@ -269,6 +284,58 @@ describe('mapResources', () => {
     expect(warnings).toHaveLength(0);
     expect(resources).toHaveLength(1);
     expect(resources[0].terraformType).toBe('aws_instance');
+  });
+
+  it('maps EC2 by label when awsServiceKey is missing', () => {
+    const pNode = {
+      id: 'ec2-no-key', label: 'EC2 Instance', style: 'rounded=1;html=1;',
+      awsServiceKey: '', parentId: null,
+      children: [], edges: [], metadata: {}, isContainer: false,
+    };
+    const { resources, warnings } = mapResources([pNode]);
+    expect(warnings).toHaveLength(0);
+    expect(resources).toHaveLength(1);
+    expect(resources[0].terraformType).toBe('aws_instance');
+  });
+
+  it('maps multiple EC2 icon variants through aliases', async () => {
+    const variants = [
+      'mxgraph.aws4.ec2_instance',
+      'mxgraph.aws4.ec2_instances',
+      'mxgraph.aws4.amazon_ec2',
+      'mxgraph.aws4.instances',
+      'mxgraph.aws4.compute.ec2',
+    ];
+    for (const variant of variants) {
+      const pNode = {
+        id: `ec2-${variant}`, label: 'EC2 Instance', style: `shape=${variant};`,
+        awsServiceKey: variant, parentId: null,
+        children: [], edges: [], metadata: {}, isContainer: false,
+      };
+      const { resources, warnings } = mapResources([pNode]);
+      expect(warnings.length).toBe(0);
+      expect(resources.length).toBe(1);
+      expect(resources[0].terraformType).toBe('aws_instance');
+    }
+  });
+
+  it('maps IGW variants through aliases', async () => {
+    const variants = [
+      'mxgraph.aws4.igw',
+      'mxgraph.aws4.internet_gw',
+      'mxgraph.aws4.internetgateway',
+    ];
+    for (const variant of variants) {
+      const pNode = {
+        id: `igw-${variant}`, label: 'Internet Gateway', style: `shape=${variant};`,
+        awsServiceKey: variant, parentId: null,
+        children: [], edges: [], metadata: {}, isContainer: false,
+      };
+      const { resources, warnings } = mapResources([pNode]);
+      expect(warnings.length).toBe(0);
+      expect(resources.length).toBe(1);
+      expect(resources[0].terraformType).toBe('aws_internet_gateway');
+    }
   });
 });
 
